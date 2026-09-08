@@ -1,0 +1,444 @@
+let ST = true, tried = new Set(), lastClickedSeat = null, reloadT = null, lastActivity = Date.now();
+let seatClicks = 0, availableSeats = [], seatIndex = 0;
+let alertAudio = null;
+
+const TOAST_TEXT = "unavailable";
+let handlingError = false;
+
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isVisible(el) {
+  if (!el) return false;
+  const style = window.getComputedStyle(el);
+  const rect = el.getBoundingClientRect();
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0" &&
+    rect.width > 0 &&
+    rect.height > 0
+  );
+}
+
+function setElementValue(element, value) {
+  if (!element) return;
+  const prototype = element.tagName === 'SELECT'
+    ? window.HTMLSelectElement.prototype
+    : window.HTMLInputElement.prototype;
+
+  const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+  if (valueSetter) {
+    valueSetter.call(element, value);
+  } else {
+    element.value = value;
+  }
+
+  ['input', 'change', 'blur'].forEach((eventType) => {
+    element.dispatchEvent(new Event(eventType, { bubbles: true, composed: true }));
+  });
+}
+
+async function safeClick(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  await sleep(150);
+  if (typeof el.focus === "function") el.focus();
+  await sleep(100);
+  el.click();
+}
+
+function onSeatUnavailable() {
+  if (handlingError) return;
+  handlingError = true;
+
+  console.log("Seat unavailable restarting");
+
+  seatClicks = 0;
+  seatIndex = 0;
+  availableSeats = [];
+
+  setTimeout(() => {
+    handlingError = false;
+    scanSeats();
+  }, 300);
+}
+
+function playSound() {
+  if (alertAudio) return;
+  alertAudio = new Audio("https://github.com/unknownlakuser/publicjs/raw/main/Happy%20Bell.wav");
+  alertAudio.loop = true;
+  const start = () => alertAudio.play().catch(() => {});
+  start();
+  document.addEventListener("click", start, { once: true });
+}
+
+function checkBookingIdParam() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("bookingId")) {
+    playSound();
+  }
+}
+
+function reloadAfterDelay() {
+  if (handlingError) return;
+  handlingError = true;
+
+  const delay = RD(7000, 11000);
+  console.log(`Seat selection incomplete reloading in ${delay}ms`);
+
+  setTimeout(() => {
+    location.reload();
+  }, delay);
+}
+
+const observer = new MutationObserver(muts => {
+  for (const m of muts) {
+    for (const n of m.addedNodes) {
+      if (n.nodeType !== 1) continue;
+
+      const text = (n.innerText || "").toLowerCase();
+
+      /* unavailable toast */
+      if (text.includes(TOAST_TEXT)) {
+        onSeatUnavailable();
+        return;
+      }
+
+      /* incomplete seat selection toast */
+      if (
+        text.includes("seat selection incomplete") ||
+        text.includes("please select seats for all passengers")
+      ) {
+        reloadAfterDelay();
+        return;
+      }
+    }
+  }
+});
+
+const toaster = document.getElementById("_rht_toaster") || document.body;
+observer.observe(toaster, { childList: true, subtree: true });
+
+const FB = document.createElement("button");
+FB.textContent = "Pause";
+FB.style.cssText = "position:fixed;top:20px;left:20px;z-index:9999;padding:18px 25px;background:#e42f40;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:18px;box-shadow:0 2px 6px rgba(0,0,0,.3)";
+document.body.appendChild(FB);
+
+function updateButton() {
+  FB.textContent = ST ? "Pause" : "Start";
+  FB.style.background = ST ? "#e42f40" : "#1bd158";
+}
+
+FB.onclick = () => {
+  ST = !ST;
+  updateButton();
+  if (ST) {
+    waitForSeats();
+    detectPassengerPage();
+  }
+};
+
+updateButton();
+
+const RD = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const NL = t => t.replace(/\s+/g, " ").trim();
+
+const kick = () => lastActivity = Date.now();
+
+function SN(s) {
+  return Number(s.label.match(/\d+/)?.[0] || 0);
+}
+
+function isLowerSeat(label) {
+  const t = NL(label).toUpperCase();
+  return /\bLL\b|\bRL\b|\bL\b/.test(t);
+}
+
+function RD_FAST(minFast, maxFast, minNormal, maxNormal) {
+  return SEAT_COUNT >= 3
+    ? Math.floor(Math.random() * (maxFast - minFast + 1)) + minFast
+    : Math.floor(Math.random() * (maxNormal - minNormal + 1)) + minNormal;
+}
+
+function onPay() {
+  const el = document.querySelector('img[src*="ic_baseline-whatsapp"]');
+  if (el) {
+    ST = false;
+    updateButton();
+    return true;
+  }
+  return false;
+}
+
+function SSAS() {
+  const shipQuery = SHIP.toLowerCase().trim(),
+        seatQuery = SEAT.toLowerCase().trim();
+
+  let attempts = 0;
+
+  const trySelect = async () => {
+    try {
+      const cards = [...document.querySelectorAll("div.border.bg-white")]
+        .filter(card => card.textContent.toLowerCase().includes(shipQuery));
+
+      if (!cards.length) throw "no cards";
+
+      for (const card of cards) {
+        const shipEl = card.querySelector(".text-sm.text-gray-600 .font-semibold");
+        if (!shipEl || !shipEl.textContent.toLowerCase().includes(shipQuery)) continue;
+
+        const seatCards = card.querySelectorAll("a.rounded-xl.border");
+
+        for (const seatCard of seatCards) {
+          const seatEl = seatCard.querySelector(".font-semibold");
+
+          if (seatEl && seatEl.textContent.toLowerCase().includes(seatQuery)) {
+            await safeClick(seatCard);
+            return;
+          }
+        }
+      }
+
+      if (++attempts < 300) setTimeout(trySelect, 250);
+    } catch {
+      if (++attempts < 300) setTimeout(trySelect, 250);
+    }
+  };
+
+  setTimeout(trySelect, 250);
+}
+
+function getVisiblePassengers() {
+  return [...document.querySelectorAll('button[role="checkbox"]')]
+    .filter(isVisible);
+}
+
+function detectPassengerPage() {
+  if (getVisiblePassengers().length > 0) {
+    selectPassengers();
+    return;
+  }
+  setTimeout(detectPassengerPage, 250);
+}
+
+function waitForPassengers(callback) {
+  const existing = getVisiblePassengers();
+  if (existing.length) {
+    callback(existing);
+    return;
+  }
+
+  const observer = new MutationObserver(() => {
+    const passengers = getVisiblePassengers();
+    if (passengers.length) {
+      observer.disconnect();
+      callback(passengers);
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function selectPassengers() {
+  waitForPassengers(async (passengers) => {
+    // Select requested passengers using Script 2's focus/click sequence
+    for (let i = 0; i < PASSENGER_REQ.length; i++) {
+      const idx = PASSENGER_REQ[i] - 1;
+      const btn = passengers[idx];
+
+      if (btn && btn.getAttribute("aria-checked") !== "true") {
+        await safeClick(btn);
+        await sleep(RD(200, 350));
+      }
+    }
+    const chk = setInterval(async () => {
+      const selected = [...document.querySelectorAll('button[role="checkbox"][aria-checked="true"]')]
+        .filter(isVisible);
+
+      if (selected.length >= PASSENGER_REQ.length) {
+        clearInterval(chk);
+        const submitBtn = document.querySelector('button[type="submit"]:not([disabled])');
+        if (submitBtn && isVisible(submitBtn)) {
+          await safeClick(submitBtn);
+        }
+      }
+    }, 150);
+  });
+}
+
+function seatElements() {
+  return [...document.querySelectorAll("svg g")].map(g => {
+    const r = g.querySelector("rect");
+    if (!r) return null;
+
+    const id = `${r.x.baseVal.value}-${r.y.baseVal.value}`;
+
+    return {
+      g,
+      id,
+      label: NL(g.querySelector("text")?.textContent || ""),
+      fill: (r.getAttribute("fill") || "").toLowerCase(),
+      pwd: !!g.querySelector('image[href*="disability"]')
+    };
+  }).filter(Boolean);
+}
+function waitForSeats() {
+  if (!ST || onPay()) return;
+
+  if (document.querySelector("svg g rect"))
+    requestAnimationFrame(scanSeats);
+  else
+    setTimeout(waitForSeats, 120);
+}
+
+/* SCAN + SMART SELECTION */
+function scanSeats() {
+  if (!ST || onPay()) return;
+
+  kick();
+
+  let seats = seatElements().filter(s => {
+    if (s.fill !== "#fff") return false;
+    if (IS_DISABILITY_SEAT && !s.pwd) return false;
+    if (!IS_DISABILITY_SEAT && s.pwd) return false;
+    if (seatskip.some(x => s.label.includes(x))) return false;
+    return true;
+  });
+
+  seats = seats.filter(s => !tried.has(s.id));
+
+  if (!seats.length) {
+    smartReload();
+    return;
+  }
+
+  let lower = seats.filter(s => isLowerSeat(s.label));
+
+  let pool = (PREFER_LOWER_SEATS && lower.length >= SEAT_COUNT)
+    ? lower
+    : seats;
+
+  const A = [], B = [];
+
+  for (const s of pool) {
+    const n = SN(s);
+    if (START_SEAT == null || n >= START_SEAT)
+      A.push(s);
+    else
+      B.push(s);
+  }
+
+  A.sort((a, b) => SN(a) - SN(b));
+  B.sort((a, b) => SN(b) - SN(a));
+
+  availableSeats = [...A, ...B];
+
+  seatIndex = 0;
+  seatClicks = 0;
+
+  assignNextSeat();
+}
+
+function assignNextSeat() {
+  if (!ST) return;
+
+  if (seatClicks >= SEAT_COUNT) {
+    setTimeout(async () => {
+      const proceedBtn = document.querySelector("div > div.flex.flex-col > div > div > button:not([disabled])");
+      if (proceedBtn) await safeClick(proceedBtn);
+    }, 500);
+    return;
+  }
+
+  const seat = availableSeats[seatIndex];
+  if (!seat) return;
+
+  seatIndex++;
+
+  setTimeout(() => {
+    clickSeat(seat);
+  }, RD_FAST(60, 120, 180, 280));
+}
+
+function clickSeat(seat) {
+  if (!ST) return;
+
+  kick();
+
+  tried.add(seat.id);
+  lastClickedSeat = seat;
+  seatClicks++;
+
+  const rect = seat.g.querySelector("rect");
+
+  ["mousedown", "mouseup", "click"].forEach(e =>
+    rect.dispatchEvent(new MouseEvent(e, { bubbles: true }))
+  );
+
+  setTimeout(assignSeat, RD_FAST(70, 130, 180, 280));
+}
+
+function getSeatPopup() {
+  return window.innerWidth < 768
+    ? document.querySelector('div[role="dialog"]')
+    : document.querySelector('div.hidden.md\\:block');
+}
+
+function assignSeat() {
+  const popup = getSeatPopup();
+
+  if (!popup) {
+    setTimeout(assignSeat, RD_FAST(30, 60, 100, 150));
+    return;
+  }
+
+  const nextPassenger = popup.querySelector(
+    'input[type="checkbox"]:not(:disabled):not(:checked)'
+  );
+
+  if (!nextPassenger) {
+    setTimeout(assignNextSeat, 120);
+    return;
+  }
+
+  setTimeout(async () => {
+    await safeClick(nextPassenger);
+
+    if (seatClicks >= SEAT_COUNT) {
+      setTimeout(async () => {
+        const proceedBtn = document.querySelector("div > div.flex.flex-col > div > div > button:not([disabled])");
+        if (proceedBtn) await safeClick(proceedBtn);
+      }, 500);
+    } else {
+      setTimeout(assignNextSeat, RD_FAST(50, 100, 180, 260));
+    }
+  }, RD_FAST(80, 140, 220, 320));
+}
+
+
+function smartReload() {
+  if (!ST || reloadT) return;
+
+  reloadT = setTimeout(() => {
+    if (!ST) return;
+    tried.clear();
+    reloadT = null;
+    location.reload();
+  }, RD(13500, 17000));
+}
+
+setInterval(() => {
+  if (!ST || onPay()) return;
+
+  if (Date.now() - lastActivity > 95000) {
+    location.reload();
+  }
+}, 4000);
+
+/* START */
+SSAS();
+waitForSeats();
+detectPassengerPage();
+checkBookingIdParam();
