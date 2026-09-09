@@ -359,7 +359,7 @@ function assignNextSeat() {
 
   setTimeout(() => {
     clickSeat(seat);
-  }, RD_FAST(180, 300, 180, 300));
+  }, RD_FAST(280, 320, 280, 320));
 }
 
 function clickSeat(seat) {
@@ -377,7 +377,7 @@ function clickSeat(seat) {
     rect.dispatchEvent(new MouseEvent(e, { bubbles: true }))
   );
 
-  setTimeout(assignSeat, RD_FAST(220, 350, 220, 350));
+  setTimeout(assignSeat, RD_FAST(280, 390, 280, 390));
 }
 
 function getSeatPopup() {
@@ -390,7 +390,7 @@ function assignSeat() {
   const popup = getSeatPopup();
 
   if (!popup) {
-    setTimeout(assignSeat, RD_FAST(80, 160, 80, 160));
+    setTimeout(assignSeat, RD_FAST(180, 260, 180, 260));
     return;
   }
 
@@ -412,9 +412,9 @@ function assignSeat() {
         if (proceedBtn) await safeClick(proceedBtn);
       }, 500);
     } else {
-      setTimeout(assignNextSeat, RD_FAST(180, 300, 180, 300));
+      setTimeout(assignNextSeat, RD_FAST(220, 340, 220, 340));
     }
-  }, RD_FAST(250, 400, 250, 400));
+  }, RD_FAST(350, 450, 350, 450));
 }
 
 
