@@ -43,9 +43,9 @@ function setElementValue(element, value) {
 async function safeClick(el) {
   if (!el) return;
   el.scrollIntoView({ behavior: "smooth", block: "center" });
-  await sleep(150);
+  await sleep(250);
   if (typeof el.focus === "function") el.focus();
-  await sleep(100);
+  await sleep(200);
   el.click();
 }
 
@@ -85,7 +85,7 @@ function reloadAfterDelay() {
   if (handlingError) return;
   handlingError = true;
 
-  const delay = RD(7000, 11000);
+  const delay = RD(27000, 31000);
   console.log(`Seat selection incomplete reloading in ${delay}ms`);
 
   setTimeout(() => {
@@ -250,7 +250,7 @@ function selectPassengers() {
 
       if (btn && btn.getAttribute("aria-checked") !== "true") {
         await safeClick(btn);
-        await sleep(RD(200, 350));
+        await sleep(RD(700, 1200));
       }
     }
     const chk = setInterval(async () => {
